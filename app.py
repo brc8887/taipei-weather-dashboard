@@ -47,7 +47,6 @@ def fetch_and_save_weather():
 # load data for visalization
 def load_data():
     conn = sqlite3.connect(DB_NAME)
-    conn.execute("DELETE FROM taipei_weather WHERE timestamp NOT LIKE '% %'")
     df = pd.read_sql_query("SELECT * FROM taipei_weather ORDER BY timestamp DESC LIMIT 20", conn)
     conn.close()
     return df.iloc[::-1]
