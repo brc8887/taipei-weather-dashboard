@@ -1,91 +1,90 @@
 import streamlit as st
 import pandas as pd
 import requests
-import pg8000.dbapi
-import warnings
+import sqlite3
+from datetime import datetime
 
-# Suppress console warnings to keep the dashboard clean
-warnings.filterwarnings('ignore')
+# --- DATABASE SETUP ---
+DB_NAME = "weather.db"
 
-# --- 1. SETUP & DATABASE CONNECTION ---
-def get_db_connection():
-    # Reads individual pieces from Streamlit Secrets to guarantee no connection errors
-    return pg8000.dbapi.connect(
-        user=st.secrets["DB_USER"],
-        password=st.secrets["DB_PASSWORD"],
-        host=st.secrets["DB_HOST"],
-        port=int(st.secrets["DB_PORT"]),
-        database=st.secrets["DB_NAME"]
-    )
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS taipei_weather (
+            timestamp TEXT PRIMARY KEY,
+            temperature REAL,
+            humidity REAL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# --- 2. DATA PIPELINE (ETL BACKEND) ---
-def run_data_pipeline():
-    """Extracts data from the Open-Meteo API, transforms it, and loads it into Postgres."""
-    # EXTRACT: Fetch current weather for Taipei
-    url = "https://api.open-meteo.com/v1/forecast?latitude=25.033&longitude=121.565&current_weather=true"
-    response = requests.get(url)
+# --- DATA PIPELINE (ETL) & REFRESH MECHANISM ---
+def fetch_and_save_weather():
+    # 1. Extract: Call free API for Taipei
+    url = "https://api.open-meteo.com/v1/forecast?latitude=25.0478&longitude=121.5319&current=temperature_2m,relative_humidity_2m&timezone=Asia%2FTaipei"
+    response = requests.get(url).json()
     
-    if response.status_code == 200:
-        data = response.json()
-        
-        # TRANSFORM: Isolate the current temperature and status code
-        current_temp = data['current_weather']['temperature']
-        weather_code = data['current_weather']['weathercode']
-        
-        # LOAD: Safely insert records into your Supabase PostgreSQL table
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO taipei_weather (temperature, condition) VALUES (%s, %s)",
-            (current_temp, str(weather_code))
+    current_data = response.get("current", {})
+    temp = current_data.get("temperature_2m")
+    humidity = current_data.get("relative_humidity_2m")
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 2. Transform & Load: Save to SQLite
+    if temp is not None and humidity is not None:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT OR REPLACE INTO taipei_weather (timestamp, temperature, humidity) VALUES (?, ?, ?)",
+            (now_str, temp, humidity)
         )
         conn.commit()
-        cur.close()
         conn.close()
         return True
     return False
 
-# --- 3. DASHBOARD (FRONTEND) ---
-st.set_page_config(page_title="Taipei Weather Dashboard", layout="centered")
-
-st.title("🌤️ Taipei Live Weather Dashboard")
-st.write("This application monitors real-time weather metrics, pulling live data via the Open-Meteo API and storing it securely in PostgreSQL.")
-
-# The Data Refresh Button (Fulfills assignment refresh rubric)
-if st.button("🔄 Run ETL Pipeline (Fetch Fresh Data)"):
-    with st.spinner("Executing pipeline and updating cloud database..."):
-        success = run_data_pipeline()
-        if success:
-            st.success("Pipeline executed successfully! Database records updated.")
-        else:
-            st.error("Pipeline failure: Unable to fetch API endpoints.")
-
-st.markdown("---")
-
-# --- 4. VISUALIZATION ---
-@st.cache_data(ttl=60) 
+# --- LOAD DATA FOR VISUALIZATION ---
 def load_data():
-    conn = get_db_connection()
-    df = pd.read_sql_query("SELECT fetch_time, temperature FROM taipei_weather ORDER BY fetch_time ASC", conn)
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT * FROM taipei_weather ORDER BY timestamp DESC LIMIT 20", conn)
     conn.close()
-    return df
+    # Reverse to make time go from left to right in charts
+    return df.iloc[::-1]
 
-try:
-    df = load_data()
-    
-    if not df.empty:
-        st.subheader("Temperature Trends Over Time")
-        
-        # Format timestamps to be easily readable on the line chart
-        df['fetch_time'] = pd.to_datetime(df['fetch_time']).dt.strftime('%H:%M:%S')
-        df = df.set_index('fetch_time')
-        
-        # Streamlit's built-in charting engine
-        st.line_chart(df['temperature'])
-        
-        st.subheader("Raw Database Records")
-        st.dataframe(df)
+# --- STREAMLIT DASHBOARD FRONTEND ---
+init_db()
+
+st.title("☀️ Taipei Weather Tracker Dashboard")
+st.caption("A simple automated data pipeline project using Streamlit and SQLite.")
+
+# 1. Data Refresh Trigger
+if st.button("🔄 Fetch & Refresh Latest Data"):
+    if fetch_and_save_weather():
+        st.success("Successfully pulled latest Taipei weather and updated SQLite!")
     else:
-        st.info("The database is currently empty. Click the 'Run ETL Pipeline' button above to generate your first historical data points!")
-except Exception as e:
-    st.warning(f"Please ensure your database is connected and the table is created. Error: {e}")
+        st.error("Failed to fetch data.")
+
+# Load current state from DB
+df = load_data()
+
+if not df.empty:
+    # 2. Display Metrics (Most recent entry)
+    latest = df.iloc[-1]
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Temperature", f"{latest['temperature']} °C")
+    col2.metric("Humidity", f"{latest['humidity']} %")
+    col3.metric("Last Updated", latest['timestamp'].split()[1])
+
+    # 3. Visualization
+    st.subheader("📈 Temperature Trend (Last 20 Records)")
+    st.line_chart(data=df, x="timestamp", y="temperature")
+    
+    st.subheader("💧 Humidity Trend")
+    st.bar_chart(data=df, x="timestamp", y="humidity")
+
+    # 4. Raw Data Log Table
+    st.subheader("📋 Raw Pipeline Data Logs (SQL Database)")
+    st.dataframe(df)
+else:
+    st.info("No data in database yet. Click the 'Fetch & Refresh Latest Data' button above to trigger your pipeline!")
