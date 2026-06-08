@@ -55,11 +55,11 @@ def load_data():
 # --- STREAMLIT DASHBOARD FRONTEND ---
 init_db()
 
-st.title("☀️ Taipei Weather Tracker Dashboard")
+st.title("Taipei Weather Tracker Dashboard")
 st.caption("A simple automated data pipeline project using Streamlit and SQLite.")
 
 # 1. Data Refresh Trigger
-if st.button("🔄 Fetch & Refresh Latest Data"):
+if st.button("Fetch & Refresh Latest Data"):
     if fetch_and_save_weather():
         st.success("Successfully pulled latest Taipei weather and updated SQLite!")
     else:
@@ -77,14 +77,14 @@ if not df.empty:
     col3.metric("Last Updated", latest['timestamp'].split()[1])
 
     # 3. Visualization
-    st.subheader("📈 Temperature Trend (Last 20 Records)")
+    st.subheader("Temperature Trend")
     st.line_chart(data=df, x="timestamp", y="temperature")
     
-    st.subheader("💧 Humidity Trend")
+    st.subheader("Humidity Trend")
     st.bar_chart(data=df, x="timestamp", y="humidity")
 
     # 4. Raw Data Log Table
-    st.subheader("📋 Raw Pipeline Data Logs (SQL Database)")
+    st.subheader("Raw Data Logs")
     st.dataframe(df)
 else:
     st.info("No data in database yet. Click the 'Fetch & Refresh Latest Data' button above to trigger your pipeline!")
