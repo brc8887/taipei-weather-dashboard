@@ -4,7 +4,6 @@ import requests
 import sqlite3
 from datetime import datetime
 
-# --- DATABASE SETUP ---
 DB_NAME = "weather.db"
 
 def init_db():
@@ -20,9 +19,8 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- DATA PIPELINE (ETL) & REFRESH MECHANISM ---
 def fetch_and_save_weather():
-    # 1. Extract: Call free API for Taipei
+    # Extract: Call free API for Taipei
     url = "https://api.open-meteo.com/v1/forecast?latitude=25.0478&longitude=121.5319&current=temperature_2m,relative_humidity_2m&timezone=Asia%2FTaipei"
     response = requests.get(url).json()
     
@@ -44,46 +42,45 @@ def fetch_and_save_weather():
         return True
     return False
 
-# --- LOAD DATA FOR VISUALIZATION ---
+# load data for visalization
 def load_data():
     conn = sqlite3.connect(DB_NAME)
     df = pd.read_sql_query("SELECT * FROM taipei_weather ORDER BY timestamp DESC LIMIT 20", conn)
     conn.close()
-    # Reverse to make time go from left to right in charts
     return df.iloc[::-1]
 
-# --- STREAMLIT DASHBOARD FRONTEND ---
+# front end (streamlit)
 init_db()
 
 st.title("Taipei Weather Tracker Dashboard")
 st.caption("Final Bonus Project")
 
-# 1. Data Refresh Trigger
+# data rf
 if st.button("Fetch & Refresh Latest Data"):
     if fetch_and_save_weather():
         st.success("Successfully pulled latest Taipei weather and updated SQLite!")
     else:
         st.error("Failed to fetch data.")
 
-# Load current state from DB
+# load current state
 df = load_data()
 
 if not df.empty:
-    # 2. Display Metrics (Most recent entry)
+    # display metrics
     latest = df.iloc[-1]
     col1, col2, col3 = st.columns(3)
     col1.metric("Temperature", f"{latest['temperature']} °C")
     col2.metric("Humidity", f"{latest['humidity']} %")
     col3.metric("Last Updated", latest['timestamp'].split()[1])
 
-    # 3. Visualization
+    # visualization temp and humidity
     st.subheader("Temperature Trend")
     st.line_chart(data=df, x="timestamp", y="temperature")
     
     st.subheader("Humidity Trend")
     st.bar_chart(data=df, x="timestamp", y="humidity")
 
-    # 4. Raw Data Log Table
+    # 4. raw data log
     st.subheader("Raw Data Logs")
     st.dataframe(df)
 else:
