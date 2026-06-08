@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 import sqlite3
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 DB_NAME = "weather.db"
 
@@ -20,16 +21,18 @@ def create_db():
     conn.close()
 
 def fetch_and_save_weather():
-    # Extract: Call free API for Taipei
+    # extract
     url = "https://api.open-meteo.com/v1/forecast?latitude=25.0478&longitude=121.5319&current=temperature_2m,relative_humidity_2m&timezone=Asia%2FTaipei"
     response = requests.get(url).json()
     
     current_data = response.get("current", {})
     temp = current_data.get("temperature_2m")
     humidity = current_data.get("relative_humidity_2m")
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    taipei_tz = ZoneInfo("Asia/Taipei")
+    now_str = datetime.now(taipei_tz).strftime("%Y-%m-%d %H:%M:%S")
     
-    # 2. Transform & Load: Save to SQLite
+    # transform and load
     if temp is not None and humidity is not None:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
