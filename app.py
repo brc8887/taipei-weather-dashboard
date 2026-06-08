@@ -56,7 +56,7 @@ def load_data():
 init_db()
 
 st.title("Taipei Weather Tracker Dashboard")
-st.caption("A simple automated data pipeline project using Streamlit and SQLite.")
+st.caption("Final Bonus Project")
 
 # 1. Data Refresh Trigger
 if st.button("Fetch & Refresh Latest Data"):
