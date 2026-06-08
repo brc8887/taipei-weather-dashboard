@@ -29,9 +29,8 @@ def fetch_and_save_weather():
     temp = current_data.get("temperature_2m")
     humidity = current_data.get("relative_humidity_2m")
 
-    taipei_tz = ZoneInfo("Asia/Taipei")
-    now_str = datetime.now(taipei_tz).strftime("%Y-%m-%d %H:%M:%S")
-    
+now_str = current_data.get("time")  
+
     # transform and load
     if temp is not None and humidity is not None:
         conn = sqlite3.connect(DB_NAME)
