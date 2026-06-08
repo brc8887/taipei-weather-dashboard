@@ -5,41 +5,43 @@ import pg8000.dbapi
 from urllib.parse import urlparse
 import warnings
 
-# Suppress console warnings to keep your app clean
+# Suppress console warnings to keep the dashboard clean
 warnings.filterwarnings('ignore')
 
 # --- 1. SETUP & DATABASE CONNECTION ---
 DB_URL = st.secrets["DATABASE_URL"]
 
 def get_db_connection():
-    # pg8000 needs the URL broken into pieces to connect safely
+    # pg8000 needs the URL parsed into separate components
     parsed = urlparse(DB_URL)
     return pg8000.dbapi.connect(
         user=parsed.username,
         password=parsed.password,
         host=parsed.hostname,
         port=parsed.port or 5432,
-        database=parsed.path.lstrip('/') # removes the slash from the db name
+        database=parsed.path.lstrip('/')
     )
 
 # --- 2. DATA PIPELINE (ETL BACKEND) ---
 def run_data_pipeline():
-    """Extracts epidemiological data from API, Transforms it, and Loads it into Postgres."""
-    url = "https://disease.sh/v3/covid-19/all"
+    """Extracts data from the Open-Meteo API, transforms it, and loads it into Postgres."""
+    # EXTRACT: Fetch current weather for Taipei
+    url = "https://api.open-meteo.com/v1/forecast?latitude=25.033&longitude=121.565&current_weather=true"
     response = requests.get(url)
     
     if response.status_code == 200:
         data = response.json()
         
-        active_cases = data['active']
-        recovered_cases = data['recovered']
+        # TRANSFORM: Isolate the current temperature and status code
+        current_temp = data['current_weather']['temperature']
+        weather_code = data['current_weather']['weathercode']
         
+        # LOAD: Safely insert records into your Supabase PostgreSQL table
         conn = get_db_connection()
         cur = conn.cursor()
-        # The %s are placeholders for our new data
         cur.execute(
-            "INSERT INTO global_health_metrics (active_cases, recovered_cases) VALUES (%s, %s)",
-            (active_cases, recovered_cases)
+            "INSERT INTO taipei_weather (temperature, condition) VALUES (%s, %s)",
+            (current_temp, str(weather_code))
         )
         conn.commit()
         cur.close()
@@ -48,18 +50,19 @@ def run_data_pipeline():
     return False
 
 # --- 3. DASHBOARD (FRONTEND) ---
-st.set_page_config(page_title="Health Informatics Dashboard", layout="centered")
+st.set_page_config(page_title="Taipei Weather Dashboard", layout="centered")
 
-st.title("🏥 Global Health Informatics Dashboard")
-st.write("This application monitors epidemiological data, pulling live global metrics via the Disease.sh open API and storing them securely in a PostgreSQL database.")
+st.title("🌤️ Taipei Live Weather Dashboard")
+st.write("This application monitors real-time weather metrics, pulling live data via the Open-Meteo API and storing it securely in PostgreSQL.")
 
-if st.button("🔄 Run ETL Pipeline (Update Health Metrics)"):
-    with st.spinner("Pulling epidemiological data from API and updating database..."):
+# The Data Refresh Button (Fulfills assignment refresh rubric)
+if st.button("🔄 Run ETL Pipeline (Fetch Fresh Data)"):
+    with st.spinner("Executing pipeline and updating cloud database..."):
         success = run_data_pipeline()
         if success:
-            st.success("Pipeline ran successfully! Database updated.")
+            st.success("Pipeline executed successfully! Database records updated.")
         else:
-            st.error("Failed to fetch data.")
+            st.error("Pipeline failure: Unable to fetch API endpoints.")
 
 st.markdown("---")
 
@@ -67,7 +70,7 @@ st.markdown("---")
 @st.cache_data(ttl=60) 
 def load_data():
     conn = get_db_connection()
-    df = pd.read_sql_query("SELECT fetch_time, active_cases, recovered_cases FROM global_health_metrics ORDER BY fetch_time ASC", conn)
+    df = pd.read_sql_query("SELECT fetch_time, temperature FROM taipei_weather ORDER BY fetch_time ASC", conn)
     conn.close()
     return df
 
@@ -75,16 +78,18 @@ try:
     df = load_data()
     
     if not df.empty:
-        st.subheader("Epidemiological Trends Over Time")
+        st.subheader("Temperature Trends Over Time")
         
+        # Format timestamps to be easily readable on the line chart
         df['fetch_time'] = pd.to_datetime(df['fetch_time']).dt.strftime('%H:%M:%S')
         df = df.set_index('fetch_time')
         
-        st.line_chart(df[['active_cases', 'recovered_cases']])
+        # Streamlit's built-in charting engine
+        st.line_chart(df['temperature'])
         
         st.subheader("Raw Database Records")
         st.dataframe(df)
     else:
-        st.info("The database is currently empty. Click the 'Run ETL Pipeline' button above to fetch your first data point!")
+        st.info("The database is currently empty. Click the 'Run ETL Pipeline' button above to generate your first historical data points!")
 except Exception as e:
     st.warning(f"Please ensure your database is connected and the table is created. Error: {e}")
