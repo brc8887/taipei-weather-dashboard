@@ -28,8 +28,7 @@ def fetch_and_save_weather():
     current_data = response.get("current", {})
     temp = current_data.get("temperature_2m")
     humidity = current_data.get("relative_humidity_2m")
-
-now_str = current_data.get("time")  
+    now_str = current_data.get("time")  
 
     # transform and load
     if temp is not None and humidity is not None:
