@@ -2,24 +2,20 @@ import streamlit as st
 import pandas as pd
 import requests
 import pg8000.dbapi
-from urllib.parse import urlparse
 import warnings
 
 # Suppress console warnings to keep the dashboard clean
 warnings.filterwarnings('ignore')
 
 # --- 1. SETUP & DATABASE CONNECTION ---
-DB_URL = st.secrets["DATABASE_URL"]
-
 def get_db_connection():
-    # pg8000 needs the URL parsed into separate components
-    parsed = urlparse(DB_URL)
+    # Reads individual pieces from Streamlit Secrets to guarantee no connection errors
     return pg8000.dbapi.connect(
-        user=parsed.username,
-        password=parsed.password,
-        host=parsed.hostname,
-        port=parsed.port or 5432,
-        database=parsed.path.lstrip('/')
+        user=st.secrets["DB_USER"],
+        password=st.secrets["DB_PASSWORD"],
+        host=st.secrets["DB_HOST"],
+        port=int(st.secrets["DB_PORT"]),
+        database=st.secrets["DB_NAME"]
     )
 
 # --- 2. DATA PIPELINE (ETL BACKEND) ---
