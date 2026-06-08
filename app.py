@@ -6,7 +6,7 @@ from datetime import datetime
 
 DB_NAME = "weather.db"
 
-def init_db():
+def create_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     cursor.execute('''
@@ -50,7 +50,7 @@ def load_data():
     return df.iloc[::-1]
 
 # front end (streamlit)
-init_db()
+create_db()
 
 st.title("Taipei Weather Tracker Dashboard")
 st.caption("Final Bonus Project")
